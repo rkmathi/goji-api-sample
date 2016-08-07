@@ -6,6 +6,7 @@ import (
 	"golang.org/x/net/context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"goji.io"
 	"goji.io/pat"
@@ -26,6 +27,20 @@ var reports = []Report{
 }
 
 func Create(w http.ResponseWriter, r *http.Request) {
+	newId := reports[len(reports)-1].Id + 1
+	now := int(time.Now().Unix())
+	report := Report{Id: newId, CreatedAt: now, UpdatedAt: now}
+
+	err := json.NewDecoder(r.Body).Decode(&report)
+	if err != nil {
+		fmt.Printf("Error!: %v\n", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	reports = append(reports, report)
+	http.Error(w, fmt.Sprintf("Report Created! id: %v", newId), http.StatusCreated)
+	return
 }
 
 func Index(w http.ResponseWriter, r *http.Request) {
