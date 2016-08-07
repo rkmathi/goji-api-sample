@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"golang.org/x/net/context"
 	"net/http"
+	"strconv"
 
 	"goji.io"
 	"goji.io/pat"
@@ -25,10 +26,11 @@ var reports = []Report{
 }
 
 func Create(w http.ResponseWriter, r *http.Request) {
-	// TODO
 }
 
 func Index(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	res, err := json.Marshal(reports)
 	if err != nil {
 		fmt.Printf("Error!: %v\n", err.Error())
@@ -36,12 +38,39 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
 }
 
 func Show(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	// TODO
+	w.Header().Set("Content-Type", "application/json")
+	id, err := strconv.Atoi(pat.Param(ctx, "id"))
+	if err != nil {
+		fmt.Printf("Error!: %v\n", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	indexAt := -1
+	for i := 0; i < len(reports); i++ {
+		if reports[i].Id == id {
+			indexAt = i
+		}
+	}
+
+	if indexAt == -1 {
+		fmt.Printf("Error!: Report Not Found\n")
+		http.Error(w, "Report Not Found", http.StatusNotFound)
+		return
+	}
+
+	res, err := json.Marshal(reports[indexAt])
+	if err != nil {
+		fmt.Printf("Error!: %v\n", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(res)
 }
 
 func Update(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -56,11 +85,11 @@ func main() {
 	mux := goji.NewMux()
 
 	// Simple C-R-U-D APIs
-	mux.HandleFunc(pat.Post("/"), Create)
-	mux.HandleFunc(pat.Get("/"), Index)
 	mux.HandleFuncC(pat.Get("/:id"), Show)
 	mux.HandleFuncC(pat.Put("/:id"), Update)
 	mux.HandleFuncC(pat.Delete("/:id"), Delete)
+	mux.HandleFunc(pat.Post("/"), Create)
+	mux.HandleFunc(pat.Get("/"), Index)
 
 	http.ListenAndServe("localhost:9999", mux)
 }
