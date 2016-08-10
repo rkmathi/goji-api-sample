@@ -20,136 +20,184 @@ type Report struct {
 	UpdatedAt int    `json:"updated_at"`
 }
 
+// Global variable (instead of Database)
 var reports = []Report{
 	// Sample records
 	Report{Id: 1, Title: "title1", Article: "this is article1", CreatedAt: 1470495600, UpdatedAt: 1470495600},
 	Report{Id: 3, Title: "title3", Article: "here is article3", CreatedAt: 1470495800, UpdatedAt: 1470495900},
 }
 
+// Errors
+type ReportNotFoundError struct {
+	Msg    string
+	Status int
+}
+
+type WrongParameterError struct {
+	Msg    string
+	Status int
+}
+
+type JsonError struct {
+	Msg    string
+	Status int
+}
+
+func (err ReportNotFoundError) Error() string {
+	return err.Msg
+}
+
+func (err WrongParameterError) Error() string {
+	return err.Msg
+}
+
+func (err JsonError) Error() string {
+	return err.Msg
+}
+
+// Helpers
+func ParseId(idStr string) (int, error) {
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return 0, WrongParameterError{"ERROR! Wrong parameter.", http.StatusBadRequest}
+	}
+	return id, nil
+}
+
+func FindReport(id int) (int, error) {
+	indexAt := -1
+	for i := 0; i < len(reports); i++ {
+		if reports[i].Id == id {
+			indexAt = i
+		}
+	}
+	if indexAt == -1 {
+		return 0, ReportNotFoundError{"ERROR! Report not found.", http.StatusNotFound}
+	}
+	return indexAt, nil
+}
+
+// Endpoints
 func Create(w http.ResponseWriter, r *http.Request) {
 	newId := reports[len(reports)-1].Id + 1
 	now := int(time.Now().Unix())
-	report := Report{Id: newId, CreatedAt: now, UpdatedAt: now}
-
-	err := json.NewDecoder(r.Body).Decode(&report)
+	newReport := Report{Id: newId, CreatedAt: now, UpdatedAt: now}
+	err := json.NewDecoder(r.Body).Decode(&newReport)
 	if err != nil {
-		fmt.Printf("Error!: %v\n", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		e := JsonError{"ERROR! Decode newReport failed.", http.StatusInternalServerError}
+		http.Error(w, e.Msg, e.Status)
 		return
 	}
 
-	reports = append(reports, report)
-	http.Error(w, fmt.Sprintf("Report Created! id: %v", newId), http.StatusCreated)
-	return
+	reports = append(reports, newReport)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(fmt.Sprintf("New report id: %v", newReport.Id)))
 }
 
 func Index(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	res, err := json.Marshal(reports)
 	if err != nil {
-		fmt.Printf("Error!: %v\n", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		e := JsonError{"ERROR! Marshal reports failed.", http.StatusInternalServerError}
+		http.Error(w, e.Msg, e.Status)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
 }
 
 func Show(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	id, err := strconv.Atoi(pat.Param(ctx, "id"))
+	id, err := ParseId(pat.Param(ctx, "id"))
 	if err != nil {
-		fmt.Printf("Error!: %v\n", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	indexAt := -1
-	for i := 0; i < len(reports); i++ {
-		if reports[i].Id == id {
-			indexAt = i
+		switch e := err.(type) {
+		case WrongParameterError:
+			http.Error(w, e.Msg, e.Status)
+			return
 		}
 	}
 
-	if indexAt == -1 {
-		fmt.Printf("Error!: Report Not Found\n")
-		http.Error(w, "Report Not Found", http.StatusNotFound)
-		return
+	indexAt, err := FindReport(id)
+	if err != nil {
+		switch e := err.(type) {
+		case ReportNotFoundError:
+			http.Error(w, e.Msg, e.Status)
+			return
+		}
 	}
 
 	res, err := json.Marshal(reports[indexAt])
 	if err != nil {
-		fmt.Printf("Error!: %v\n", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		e := JsonError{"ERROR! Marshal reports[indeAt] failed.", http.StatusInternalServerError}
+		http.Error(w, e.Msg, e.Status)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
 }
 
 func Update(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(pat.Param(ctx, "id"))
+	id, err := ParseId(pat.Param(ctx, "id"))
 	if err != nil {
-		fmt.Printf("Error!: %v\n", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	indexAt := -1
-	for i := 0; i < len(reports); i++ {
-		if reports[i].Id == id {
-			indexAt = i
+		switch e := err.(type) {
+		case WrongParameterError:
+			http.Error(w, e.Msg, e.Status)
+			return
 		}
 	}
 
-	if indexAt == -1 {
-		fmt.Printf("Error!: Report Not Found\n")
-		http.Error(w, "Report Not Found", http.StatusNotFound)
-		return
+	indexAt, err := FindReport(id)
+	if err != nil {
+		switch e := err.(type) {
+		case ReportNotFoundError:
+			http.Error(w, e.Msg, e.Status)
+			return
+		}
 	}
 
 	now := int(time.Now().Unix())
-	report := Report{Id: reports[indexAt].Id, CreatedAt: reports[indexAt].CreatedAt, UpdatedAt: now}
-	err2 := json.NewDecoder(r.Body).Decode(&report)
-	if err2 != nil {
-		fmt.Printf("Error!: %v\n", err2.Error())
-		http.Error(w, err2.Error(), http.StatusBadRequest)
+	updatedReport := Report{Id: reports[indexAt].Id, CreatedAt: reports[indexAt].CreatedAt, UpdatedAt: now}
+	jsonErr := json.NewDecoder(r.Body).Decode(&updatedReport)
+	if jsonErr != nil {
+		e := JsonError{"ERROR! Decode newReport failed.", http.StatusInternalServerError}
+		http.Error(w, e.Msg, e.Status)
 		return
 	}
 
 	// TODO: Keep sorting...
 	reports = append(reports[:indexAt], reports[indexAt+1:]...)
-	reports = append(reports, report)
-	http.Error(w, fmt.Sprintf("Report Updated! id: %v", id), http.StatusCreated)
-	return
+	reports = append(reports, updatedReport)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(fmt.Sprintf("Update report id: %v", updatedReport.Id)))
 }
 
 func Delete(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(pat.Param(ctx, "id"))
+	id, err := ParseId(pat.Param(ctx, "id"))
 	if err != nil {
-		fmt.Printf("Error!: %v\n", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	indexAt := -1
-	for i := 0; i < len(reports); i++ {
-		if reports[i].Id == id {
-			indexAt = i
+		switch e := err.(type) {
+		case WrongParameterError:
+			http.Error(w, e.Msg, e.Status)
+			return
 		}
 	}
 
-	if indexAt == -1 {
-		fmt.Printf("Error!: Report Not Found\n")
-		http.Error(w, "Report Not Found", http.StatusNotFound)
-		return
+	indexAt, err := FindReport(id)
+	if err != nil {
+		switch e := err.(type) {
+		case ReportNotFoundError:
+			http.Error(w, e.Msg, e.Status)
+			return
+		}
 	}
 
 	reports = append(reports[:indexAt], reports[indexAt+1:]...)
-	http.Error(w, fmt.Sprintf("Report Deleted! id: %v", id), http.StatusNoContent)
-	return
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNoContent)
+	w.Write([]byte(fmt.Sprintf("Delete report id: %v", id)))
 }
 
 func main() {
